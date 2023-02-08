@@ -9,38 +9,9 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Define the class for the custom dataset
-class CustomImageDataset(torch.utils.data.Dataset):
-    def __init__(self, image_folder, labels_file, transform=None):
-        self.image_folder = image_folder
-        self.labels = {}
-        with open(labels_file, 'r') as f:
-            for line in f:
-                parts = line.strip().split(',')
-                self.labels[parts[0]] = int(parts[1])
-        self.transform = transform
 
-    def __len__(self):
-        return len(self.labels)
 
-    def __getitem__(self, index):
-        image_name = str(index) + '.jpg'
-        image_path = os.path.join(self.image_folder, image_name)
-        image = Image.open(image_path)
-        label = self.labels[image_name]
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, label
-
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-])
-
-dataset = CustomImageDataset('path/to/images', 'path/to/labels.txt', transform)
+dataset = None
 
 classes = ("left", "right", "straight")
 
