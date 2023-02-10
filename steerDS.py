@@ -24,21 +24,21 @@ class SteerDataSet(Dataset):
         f = self.filenames[idx]        
         img = cv2.imread(self.root_folder + f)
 
-        img_cut = img[100:,:]
+        img_cut = img[50:,:]
        
         # print(img_cut.shape)
 
-        img = cv2.resize(img_cut, [100,100])
+        img = cv2.resize(img_cut, [50,50])
 
         if self.transform == None:
             img = self.totensor(img)
         else:
             img = self.transform(img)   
         
-        steering = re.findall("-\d.\d\d", f)
+        steering = re.findall("-\d.\d", f)
 
         if steering == []:
-            steering = re.findall("\d\D\d\d", f)
+            steering = re.findall("\d\D\d", f)
 
         # print(steering)
         steering = np.float32(steering)  

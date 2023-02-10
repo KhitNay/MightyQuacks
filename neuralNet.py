@@ -10,6 +10,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from steerDS import SteerDataSet
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.sampler import SubsetRandomSampler
+
+def accuracy_fn(y_true, y_pred):
+    correct = torch.eq(y_true, y_pred).sum().item() # torch.eq() calculates where two tensors are equal
+    acc = (correct / len(y_pred)) * 100 
+    return acc
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -19,11 +25,37 @@ transform = transforms.Compose(
     [transforms.ToTensor(),
      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-ds = SteerDataSet("/home/khit/MightyQuacks/penguinImages/data/",".jpg",transform)
+# Load custom data
+ds = SteerDataSet("/home/khit/MightyQuacks/augRedTrack/",".jpg",transform)
 
-print("The dataset contains %d images " % len(ds))
+# Set up parameters for splitting data
+# https://stackoverflow.com/questions/50544730/how-do-i-split-a-custom-dataset-into-training-and-test-datasets
+validationSplit = 0.2
+shuffle = True
+randomSeed = 14
 
-ds_dataloader = DataLoader(ds,batch_size=1,shuffle=True)
+datasetSize = len(ds)
+indices = list(range(datasetSize))
+split = int(np.floor(validationSplit * datasetSize))
+
+# Randomly shuffle data
+if shuffle:
+    np.random.seed(randomSeed)
+    np.random.shuffle(indices)
+
+# Split data
+trainIndices, valIndices = indices[split:], indices[:split]
+
+# Data samplers and loaders
+trainSampler = SubsetRandomSampler(trainIndices)
+validSampler = SubsetRandomSampler(valIndices)
+
+trainLoader = DataLoader(ds, batch_size=1, sampler=trainSampler)
+validationLoader = DataLoader(ds, batch_size=1, sampler=validSampler)
+
+print("The dataset contains %d images " % datasetSize)
+
+# ds_dataloader = DataLoader(dsedge_cases/" + ,batch_size=1,shuffle=True)
 
 
 # Define the neural network for the classifier
@@ -33,7 +65,7 @@ class Net(nn.Module):
         self.conv1 = nn.Conv2d(3, 6, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(7744, 120)
+        self.fc1 = nn.Linear(1296, 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 3)
 
@@ -51,37 +83,92 @@ net = Net().to(device)
 import torch.optim as optim
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9) 
 
+def train_step(model: torch.nn.Module,
+               data_loader: torch.utils.data.DataLoader,
+               loss_fn: torch.nn.Module,
+               optimizer: torch.optim.Optimizer,
+               accuracy_fn,
+               device: torch.device = device):
+    train_loss, train_acc = 0, 0
+    for batch, data in enumerate(data_loader, 0):
 
-epochs = 100
-for epoch in range(epochs):  # loop over the dataset multiple times
-
-    running_loss = 0.0
-    for i, data in enumerate(ds_dataloader, 0):
-        # get the inputs; data is a list of [inputs, labels]
-        inputs = data["image"]
-        labels = data["direction"]
+        X = data["image"]
+        y = data["direction"]
 
         # Send data to GPU
-        inputs = inputs.to(device)
-        labels = labels.to(device)
+        X, y = X.to(device), y.to(device)
 
-        # zero the parameter gradients
+        # 1. Forward pass
+        y_pred = model(X)
+
+        # 2. Calculate loss
+        loss = loss_fn(y_pred, y)
+        train_loss += loss
+        train_acc += accuracy_fn(y_true=y,
+                                 y_pred=y_pred.argmax(dim=1)) # Go from logits -> pred labels
+
+        # 3. Optimizer zero grad
         optimizer.zero_grad()
 
-        # forward + backward + optimize
-        outputs = net(inputs)
-        loss = criterion(outputs, labels)
+        # 4. Loss backward
         loss.backward()
+
+        # 5. Optimizer step
         optimizer.step()
 
-        # print statistics
-        running_loss += loss.item()
-        if i % 2000 == 1999:    # print every 2000 mini-batches
-            print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
-            running_loss = 0.0
+    # Calculate loss and accuracy per epoch and print out what's happening
+    train_loss /= len(data_loader)
+    train_acc /= len(data_loader)
+    print(f"Train loss: {train_loss:.5f} | Train accuracy: {train_acc:.2f}%")
 
-print('Finished Training')
+def test_step(data_loader: torch.utils.data.DataLoader,
+              model: torch.nn.Module,
+              loss_fn: torch.nn.Module,
+              accuracy_fn,
+              device: torch.device = device):
+    test_loss, test_acc = 0, 0
+    model.eval() # put model in eval mode
+    # Turn on inference context manager
+    with torch.inference_mode(): 
+        for batch, data in enumerate(data_loader):
 
-torch.save(net.state_dict(), "quackNet2.pt")
+            X = data["image"]
+            y = data["direction"]
+            # Send data to GPU
+            X, y = X.to(device), y.to(device)
+            
+            # 1. Forward pass
+            test_pred = model(X)
+            
+            # 2. Calculate loss and accuracy
+            test_loss += loss_fn(test_pred, y)
+            test_acc += accuracy_fn(y_true=y,
+                y_pred=test_pred.argmax(dim=1) # Go from logits -> pred labels
+            )
+        
+        # Adjust metrics and print out
+        test_loss /= len(data_loader)
+        test_acc /= len(data_loader)
+        print(f"Test loss: {test_loss:.5f} | Test accuracy: {test_acc:.2f}%\n")
+
+epochs = 10
+for epoch in range(epochs):
+    print(f"Epoch: {epoch}\n---------")
+    train_step(data_loader=trainLoader, 
+        model=net, 
+        loss_fn=criterion,
+        optimizer=optimizer,
+        accuracy_fn=accuracy_fn,
+        device=device
+    )
+    test_step(data_loader=validationLoader,
+        model=net,
+        loss_fn=criterion,
+        accuracy_fn=accuracy_fn,
+        device=device
+    )
+
+
+torch.save(net.state_dict(), "quackNet16.pt")
