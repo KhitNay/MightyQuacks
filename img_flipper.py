@@ -3,8 +3,6 @@ import glob
 import re
 import os
 
-# TO DO: Update paths as required
-
 path = "/home/morgan/rvss2023/rvss/RVSS_Need4Speed/on_laptop/new_data/*.jpg"
 save_path = "/home/morgan/rvss2023/rvss/RVSS_Need4Speed/on_laptop/augmented_data/"
 img_count = 0
@@ -21,11 +19,18 @@ for img_path in glob.glob(path):
     steering = float(steering[0])
 
     if steering < 0 or steering > 0:
-        cv.imwrite(save_path + str(img_count) + str(steering) + '.jpg' , img)
+        cv.imwrite(save_path + str(img_count) + str(steering) + '0' + '.jpg' , img)
         img_count = img_count + 1
         steering = steering * -1
-        cv.imwrite(save_path + str(img_count) + str(steering) + '.jpg' , cv.flip(img, 1) )
+        cv.imwrite(save_path + str(img_count) + str(steering) + '0' +'.jpg' , cv.flip(img, 1) )
         img_count = img_count + 1
     else:
-        cv.imwrite(save_path + str(img_count) + str(steering) + '.jpg' , img )
+        cv.imwrite(save_path + str(img_count) + str(steering) + '0' +'.jpg' , img )
         img_count = img_count + 1
+        cv.imwrite(save_path + str(img_count) + str(steering) + '0' +'.jpg' , cv.flip(img, 1) )
+        img_count = img_count + 1
+
+
+    # img_fliped = cv.flip(img, 1)
+
+    # cv.imwrite(img, '')
